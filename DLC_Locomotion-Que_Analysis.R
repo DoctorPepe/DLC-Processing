@@ -8,12 +8,14 @@ library(plotly)
 #DLC annotation confidence threshold
 threshold = 0.6
 fps = 10
+plotting = FALSE
 verbosePlotting = FALSE
 removeOutliers = TRUE
 #set this to be 1/2 the resolution of the video in whichever dimension is smallest
 #(i.e for a recording that is 640x480, the threshold should be ~240)
 outlierThreshold = 200
 binning = FALSE
+partType = "Neck"
 
 
 #==Functions==
@@ -115,6 +117,10 @@ saveDir <- choose.dir(default= "", caption = "Select folder to save graphs in")
 
 #loop through all selected files and perform batched analysis
 #expects the passed DLC csv files to be formatted with filenames separated by underscores 
+
+dfLoc = list("blnk")
+dfColated = list("blnk")
+
 for (a in 1:length(files)) {
     tmp <- str_split_fixed(basename(files[a]), "_", 4)
     animalID <- tmp[3]
@@ -135,7 +141,7 @@ for (a in 1:length(files)) {
     #get names of parts: loop through data, separate out column names
     #skip first column which is the frame number
     dataProcessed <- data.frame("frame"= dataOrig$bodyparts_coords)
-    dataStats = data.frame("part" = character(), "percent_labeled" = numeric(), "num_outlers" = numeric(), "percent_outlers" = numeric(), "dist_traveled" = numeric())
+    dataStats = data.frame("part" = character(), "percent_labeled" = numeric(), "num_outliers" = numeric(), "percent_outlers" = numeric(), "dist_traveled" = numeric())
     dfBinned <- data.frame("time" = numeric())
     
     #take x,y, and likelihood values for each part and analyze
@@ -159,6 +165,15 @@ for (a in 1:length(files)) {
       names(tmp2) = c("part", "percent_labeled", "num_outlers", "percent_outlers", "dist_traveled")
       dataStats = rbind(dataStats, tmp2)
       
+      if (part == partType) {
+        dfLoc[[animalID]] <- ret[[9]]
+        
+        str1 = paste(animalID, "_dist", sep = "")
+        str2 = paste(animalID, "_acc", sep = "")
+        dfColated[[str1]] <- ret[[4]]
+        dfColated[[str2]] <- ret[[5]]
+      }
+      
       #bin data into seconds 
       if (binning == TRUE) {
         tmp3 = data.frame(dataProcessed[, part_dist], dataProcessed[, part_acc])
@@ -174,34 +189,29 @@ for (a in 1:length(files)) {
         }
       }
       
-      strName = paste(animalID, part, sep="-")
-      print(paste("Plotting", part, "Data...", sep=" "))
-      if (verbosePlotting == TRUE) {
-        #(x,y) part plot
-        p1 <- ggplot(dataProcessed, aes(x=!!sym(part_x), y=!!sym(part_y))) + geom_point(color="darkblue") + scale_y_reverse() + 
-          ggtitle(strName)
-        print(p1)
-        #plot distance
-        strName= paste("Distance(Px): ", animalID, " - ", part, sep="")
-        p2 <- ggplot(dataProcessed, aes(x=frame, y=!!sym(part_dist))) + geom_line(color="darkblue", alpha=0.9, size = 1) + 
+      if (plotting == TRUE) {
+        strName = paste(animalID, part, sep="-")
+        print(paste("Plotting", part, "Data...", sep=" "))
+        if (verbosePlotting == TRUE) {
+          #(x,y) part plot
+          p1 <- ggplot(dataProcessed, aes(x=!!sym(part_x), y=!!sym(part_y))) + geom_point(color="darkblue") + scale_y_reverse() + 
+            ggtitle(strName)
+          print(p1)
+          #plot distance
+          strName= paste("Distance(Px): ", animalID, " - ", part, sep="")
+          p2 <- ggplot(dataProcessed, aes(x=frame, y=!!sym(part_dist))) + geom_line(color="darkblue", alpha=0.9, size = 1) + 
+            ggtitle(strName) + 
+            theme_light()
+          print(p2)
+        }
+        #plot acceleration
+        strName= paste("Accelleration(Px): ", animalID, " - ", part, sep="")
+        p3 <- ggplot(dataProcessed, aes(x=frame, y=!!sym(part_acc))) + geom_line(color="darkblue", alpha=0.9, size = 1) + 
           ggtitle(strName) + 
           theme_light()
-        print(p2)
+        print(p3)
       }
-      #plot acceleration
-      strName= paste("Accelleration(Px): ", animalID, " - ", part, sep="")
-      p3 <- ggplot(dataProcessed, aes(x=frame, y=!!sym(part_acc))) + geom_line(color="darkblue", alpha=0.9, size = 1) + 
-        ggtitle(strName) + 
-        theme_light()
-      print(p3)
     }
-    #clear unnecessary data
-    rm(p1)
-    rm(p2)
-    rm(p3)
-    rm(ret)
-    rm(tmp)
-    rm(tmp2)
     
     #save all plots
     plotsPath <- list.files(tempdir(), pattern="rs-graphics", full.names=TRUE)
@@ -209,3 +219,10 @@ for (a in 1:length(files)) {
     file.copy(from=plotspngPath, to=saveDir)
 }
 
+dfColated <- dfColated[-1]
+dfLoc <- dfLoc[-1]
+
+dfColated <- lapply(dfColated, 'length<-', max(lengths(dfColated)))
+
+write.csv(dfLoc, "dfLoc.csv")
+write.csv(dfColated, "dfColated.csv")
